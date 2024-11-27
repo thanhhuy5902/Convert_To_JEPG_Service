@@ -101,8 +101,6 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
           contentType = file.mimetype;
         }
 
-        const metadata = await sharp(outputBuffer).metadata();
-
         // Resize the image only if it is larger than 800 pixels in either dimension
 
         let uid = uuidv4();
