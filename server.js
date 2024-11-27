@@ -77,30 +77,33 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
           return res.status(400).send("File size too large.");
         }
 
-        // Đọc file HEIC
-        console.log("file đổi nè", file);
-        const inputBuffer = await promisify(fs.readFile)(file.path);
+        if (
+          path.extname(file.originalname).toLowerCase() === ".heic" ||
+          path.extname(file.originalname).toLowerCase() === ".HEIC" ||
+          path.extname(file.originalname).toLowerCase() === ".heif" ||
+          path.extname(file.originalname).toLowerCase() === ".HEIF"
+        ) {
+          // Đọc file HEIC
+          console.log("file đổi nè", file);
+          const inputBuffer = await promisify(fs.readFile)(file.path);
 
-        // Chuyển đổi sang JPEG
-        outputBuffer = await convert({
-          buffer: inputBuffer, // Buffer từ file HEIC
-          format: "JPEG", // Định dạng đầu ra
-          quality: 1, // Chất lượng JPEG (0 - 1)
-        });
+          // Chuyển đổi sang JPEG
+          outputBuffer = await convert({
+            buffer: inputBuffer, // Buffer từ file HEIC
+            format: "JPEG", // Định dạng đầu ra
+            quality: 1, // Chất lượng JPEG (0 - 1)
+          });
 
-        contentType = "image/jpeg";
+          contentType = "image/jpeg";
+        } else {
+          // Đọc file không phải HEIC
+          outputBuffer = await promisify(fs.readFile)(file.path);
+          contentType = file.mimetype;
+        }
 
         const metadata = await sharp(outputBuffer).metadata();
 
         // Resize the image only if it is larger than 800 pixels in either dimension
-        if (metadata.width > 800 || metadata.height > 800) {
-          outputBuffer = await sharp(outputBuffer)
-            .resize(800, 800, {
-              fit: sharp.fit.inside,
-              withoutEnlargement: true,
-            })
-            .toBuffer();
-        }
 
         let uid = uuidv4();
 
