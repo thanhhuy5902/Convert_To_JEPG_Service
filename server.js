@@ -1,13 +1,13 @@
 const cors = require("cors");
-const { v1: uuidv1, v4: uuidv4 } = require("uuid");
+const { v4: uuidv4 } = require("uuid");
 require("dotenv").config();
 const express = require("express");
 const multer = require("multer");
-const sharp = require("sharp");
 const fs = require("fs");
 const path = require("path");
-const { createClient } = require("@supabase/supabase-js");
 const { promisify } = require("util");
+const heicConvert = require("heic-convert");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 app.use(cors());
@@ -16,11 +16,14 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 const upload = multer({ dest: "uploads/" }); // Thư mục tạm lưu file upload
+
+// Supabase configuration
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
+// Xóa tất cả các file trong thư mục upload
 const clearUploadDir = async (directory) => {
   try {
     const files = await promisify(fs.readdir)(directory);
@@ -34,77 +37,97 @@ const clearUploadDir = async (directory) => {
   }
 };
 
-// API POST để chuyển đổi HEIC sang JPEG
+// Chuyển đổi HEIC sang JPEG/WebP
+async function convertHeicToJpeg(inputPath, outputPath) {
+  const inputBuffer = await promisify(fs.readFile)(inputPath);
+  const outputBuffer = await heicConvert({
+    buffer: inputBuffer,
+    format: "JPEG", // Hoặc 'WEBP' nếu muốn chuyển đổi sang WebP
+    quality: 0.5, // Chất lượng (0.8 tương đương 80%)
+  });
+  await promisify(fs.writeFile)(outputPath, outputBuffer);
+}
+
 app.post("/convert-heic", upload.any(), async (req, res) => {
   try {
+    console.log("Processing files:", req.files);
+
     if (!req.files || req.files.length === 0) {
       return res.status(400).send("No files uploaded");
     }
 
     if (req.files.length > 5) {
-      return res.status(400).send("Max 5 files are allowed.");
+      return res
+        .status(400)
+        .send("You can upload a maximum of 5 files at a time.");
     }
+
+    const maxFileSize = 20 * 1024 * 1024; // 20MB
     const uploadedFiles = [];
 
     for (const file of req.files) {
-      console.log(file.fieldname);
+      if (file.size > maxFileSize) {
+        return res
+          .status(400)
+          .send(
+            `File size exceeds the limit of ${maxFileSize / (1024 * 1024)}MB.`
+          );
+      }
+
       const inputPath = file.path; // File upload tạm thời
-      const outputFileName = `${path.parse(file.originalname).name}.jpg`;
+      const outputFileName = `${path.parse(file.originalname).name}.jpg`; // Đổi thành .jpg
       const outputPath = `uploads/${outputFileName}`;
 
       // Chuyển đổi HEIC sang JPEG
-      await sharp(inputPath).jpeg({ quality: 100 }).toFile(outputPath);
+      if (file.mimetype === "image/heic" || file.mimetype === "image/heif") {
+        await convertHeicToJpeg(inputPath, outputPath);
+      } else {
+        await promisify(fs.copyFile)(inputPath, outputPath);
+      }
 
       // Đọc nội dung file JPEG đã chuyển đổi
       const jpegBuffer = fs.readFileSync(outputPath);
-      let uid = uuidv4();
+      const uid = uuidv4();
 
-      console.log("avatar", file.fieldname);
       const parts = file.fieldname.split("/");
       const beforeSlash = parts[0];
       const afterSlash = parts[1];
 
-      if (beforeSlash == "") {
+      if (!beforeSlash) {
         return res.status(400).send("Uuid is null");
       }
 
-      // Tạo tên file cho storage
       const storagePath = `${beforeSlash}/${path.parse(uid).name}`;
 
-      // Upload lên Supabase Storage
+      // Upload file lên Supabase Storage
       const { data, error } = await supabase.storage
-        .from(`${afterSlash}`) // Thay "avatars" bằng tên bucket thực tế của bạn
+        .from(afterSlash)
         .upload(storagePath, jpegBuffer, {
           contentType: "image/jpeg",
-          upsert: true, // Ghi đè nếu file đã tồn tại
+          upsert: true,
         });
 
       if (error) {
         return res.status(400).json({ error: error.message });
       }
 
-      // Tạo URL công khai cho file đã upload
       const { data: publicURL, error: urlError } = supabase.storage
-        .from(`${afterSlash}`) // Sử dụng tên bucket chính xác
+        .from(afterSlash)
         .getPublicUrl(storagePath);
 
-      console.log(publicURL.publicUrl);
       if (urlError) {
         return res.status(400).json({ error: urlError.message });
       }
 
-      // Thêm URL vào danh sách file đã upload
       uploadedFiles.push(publicURL.publicUrl);
-
-      // Xóa file tạm sau khi upload
     }
-    await clearUploadDir("uploads");
 
-    // Trả về danh sách file đã upload cùng URL
     res.status(200).json(uploadedFiles);
   } catch (error) {
     console.error("Error processing files:", error);
     res.status(400).send("Error processing files");
+  } finally {
+    await clearUploadDir("uploads"); // Xóa thư mục tạm
   }
 });
 
