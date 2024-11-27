@@ -47,15 +47,13 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
     const uploadedFiles = [];
 
     for (const file of req.files) {
-      console.log(file.fieldname)
+      console.log(file.fieldname);
       const inputPath = file.path; // File upload tạm thời
       const outputFileName = `${path.parse(file.originalname).name}.jpg`;
       const outputPath = `uploads/${outputFileName}`;
 
       // Chuyển đổi HEIC sang JPEG
-      await sharp(inputPath)
-        .jpeg({ quality: 100 })
-        .toFile(outputPath);
+      await sharp(inputPath).jpeg({ quality: 100 }).toFile(outputPath);
 
       // Đọc nội dung file JPEG đã chuyển đổi
       const jpegBuffer = fs.readFileSync(outputPath);
@@ -65,13 +63,10 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
       const parts = file.fieldname.split("/");
       const beforeSlash = parts[0];
       const afterSlash = parts[1];
-      
+
       if (beforeSlash == "") {
         return res.status(400).send("Uuid is null");
       }
-  
-
-      
 
       // Tạo tên file cho storage
       const storagePath = `${beforeSlash}/${path.parse(uid).name}`;
@@ -93,18 +88,15 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
         .from(`${afterSlash}`) // Sử dụng tên bucket chính xác
         .getPublicUrl(storagePath);
 
-
-        console.log(publicURL.publicUrl)
+      console.log(publicURL.publicUrl);
       if (urlError) {
         return res.status(400).json({ error: urlError.message });
       }
 
       // Thêm URL vào danh sách file đã upload
       uploadedFiles.push(publicURL.publicUrl);
-      
 
       // Xóa file tạm sau khi upload
-      
     }
     await clearUploadDir("uploads");
 
