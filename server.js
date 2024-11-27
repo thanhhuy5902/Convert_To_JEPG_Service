@@ -28,6 +28,7 @@ const clearUploadDir = async (directory) => {
       promisify(fs.unlink)(path.join(directory, file))
     );
     await Promise.all(deletePromises);
+    console.log(`Directory ${directory} has been cleared.`);
   } catch (err) {
     console.error(`Failed to clear directory ${directory}:`, err);
   }
@@ -46,6 +47,7 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
     const uploadedFiles = [];
 
     for (const file of req.files) {
+      console.log(file.fieldname)
       const inputPath = file.path; // File upload tạm thời
       const outputFileName = `${path.parse(file.originalname).name}.jpg`;
       const outputPath = `uploads/${outputFileName}`;
@@ -59,6 +61,7 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
       const jpegBuffer = fs.readFileSync(outputPath);
       let uid = uuidv4();
 
+      console.log("avatar", file.fieldname);
       const parts = file.fieldname.split("/");
       const beforeSlash = parts[0];
       const afterSlash = parts[1];
@@ -67,6 +70,9 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
         return res.status(400).send("Uuid is null");
       }
   
+
+      
+
       // Tạo tên file cho storage
       const storagePath = `${beforeSlash}/${path.parse(uid).name}`;
 
@@ -98,8 +104,9 @@ app.post("/convert-heic", upload.any(), async (req, res) => {
       
 
       // Xóa file tạm sau khi upload
-      await clearUploadDir("uploads");
+      
     }
+    await clearUploadDir("uploads");
 
     // Trả về danh sách file đã upload cùng URL
     res.status(200).json(uploadedFiles);
